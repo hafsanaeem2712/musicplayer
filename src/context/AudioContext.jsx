@@ -14,11 +14,15 @@ export const AudioProvider = ({ children }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
-  const audioRef = useRef(new Audio());
+  const audioRef = useRef(null);
+
+  if (!audioRef.current) {
+    audioRef.current = new Audio();
+    audioRef.current.preload = 'metadata';
+  }
 
   const currentTrack = tracks[currentTrackIndex] || tracks[0];
 
-  // Sync audio src when track changes
   useEffect(() => {
     const audio = audioRef.current;
     if (!currentTrack?.src) return;
@@ -27,14 +31,16 @@ export const AudioProvider = ({ children }) => {
     audio.load();
 
     if (isPlaying) {
-      audio.play().catch((err) => {
-        console.warn('Playback prevented by browser policy or network:', err);
-        setIsPlaying(false);
-      });
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Playback error:', err);
+          setIsPlaying(false);
+        });
+      }
     }
   }, [currentTrackIndex]);
 
-  // Audio Event Listeners
   useEffect(() => {
     const audio = audioRef.current;
     audio.volume = isMuted ? 0 : volume;
@@ -44,12 +50,17 @@ export const AudioProvider = ({ children }) => {
     const onEnded = () => nextTrack();
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
+    const onError = (e) => {
+      console.error('Audio load error:', e);
+      setIsPlaying(false);
+    };
 
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
+    audio.addEventListener('error', onError);
 
     return () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
@@ -57,16 +68,24 @@ export const AudioProvider = ({ children }) => {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('play', onPlay);
       audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('error', onError);
     };
   }, [volume, isMuted, tracks.length]);
 
-  // Controls
   const togglePlay = () => {
     const audio = audioRef.current;
     if (isPlaying) {
       audio.pause();
     } else {
-      audio.play().catch((err) => console.warn('Play error:', err));
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => setIsPlaying(true))
+          .catch((err) => {
+            console.error('Playback failed:', err);
+            setIsPlaying(false);
+          });
+      }
     }
   };
 
@@ -106,7 +125,6 @@ export const AudioProvider = ({ children }) => {
     });
   };
 
-  // Filtered tracks based on category and search
   const filteredTracks = useMemo(() => {
     return tracks.filter((t) => {
       const matchesCategory = selectedCategory === 'All' || t.category === selectedCategory;
