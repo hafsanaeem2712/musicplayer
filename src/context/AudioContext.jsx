@@ -15,98 +15,123 @@ export const AudioProvider = ({ children }) => {
   const [selectedCategory, setSelectedCategory] = useState('All');
 
   const audioRef = useRef(null);
-
-  if (!audioRef.current) {
-    audioRef.current = new Audio();
-    audioRef.current.preload = 'metadata';
-  }
+  const synthIntervalRef = useRef(null);
+  const webAudioCtxRef = useRef(null);
 
   const currentTrack = tracks[currentTrackIndex] || tracks[0];
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!currentTrack?.src) return;
-
-    audio.src = currentTrack.src;
-    audio.load();
-
-    if (isPlaying) {
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((err) => {
-          console.warn('Playback error:', err);
-          setIsPlaying(false);
-        });
+  // Synth Fallback Audio Generator
+  const playSynthesizedTone = () => {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!webAudioCtxRef.current) {
+        webAudioCtxRef.current = new AudioContextClass();
       }
+      const ctx = webAudioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const notes = [261.63, 329.63, 392.0, 523.25]; // C, E, G, High C chords
+      const freq = notes[Math.floor(Math.random() * notes.length)];
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+
+      const targetVol = isMuted ? 0 : volume * 0.15;
+      gain.gain.setValueAtTime(targetVol, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.8);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.8);
+    } catch (e) {
+      console.warn('Synth error:', e);
     }
-  }, [currentTrackIndex]);
+  };
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    audio.volume = isMuted ? 0 : volume;
+  const startSynthFallback = () => {
+    stopSynthFallback();
+    setDuration(30);
+    synthIntervalRef.current = setInterval(() => {
+      playSynthesizedTone();
+      setCurrentTime((prev) => {
+        if (prev >= 30) {
+          nextTrack();
+          return 0;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+  };
 
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const onLoadedMetadata = () => setDuration(audio.duration || 0);
-    const onEnded = () => nextTrack();
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    const onError = (e) => {
-      console.error('Audio load error:', e);
-      setIsPlaying(false);
-    };
-
-    audio.addEventListener('timeupdate', onTimeUpdate);
-    audio.addEventListener('loadedmetadata', onLoadedMetadata);
-    audio.addEventListener('ended', onEnded);
-    audio.addEventListener('play', onPlay);
-    audio.addEventListener('pause', onPause);
-    audio.addEventListener('error', onError);
-
-    return () => {
-      audio.removeEventListener('timeupdate', onTimeUpdate);
-      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
-      audio.removeEventListener('ended', onEnded);
-      audio.removeEventListener('play', onPlay);
-      audio.removeEventListener('pause', onPause);
-      audio.removeEventListener('error', onError);
-    };
-  }, [volume, isMuted, tracks.length]);
+  const stopSynthFallback = () => {
+    if (synthIntervalRef.current) {
+      clearInterval(synthIntervalRef.current);
+      synthIntervalRef.current = null;
+    }
+  };
 
   const togglePlay = () => {
     const audio = audioRef.current;
     if (isPlaying) {
-      audio.pause();
+      if (audio) audio.pause();
+      stopSynthFallback();
+      setIsPlaying(false);
     } else {
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise
+      if (audio && audio.src) {
+        audio
+          .play()
           .then(() => setIsPlaying(true))
-          .catch((err) => {
-            console.error('Playback failed:', err);
-            setIsPlaying(false);
+          .catch(() => {
+            // If local or remote media is blocked, run synthesizer fallback
+            startSynthFallback();
+            setIsPlaying(true);
           });
+      } else {
+        startSynthFallback();
+        setIsPlaying(true);
       }
     }
   };
 
   const playTrack = (index) => {
     setCurrentTrackIndex(index);
+    setCurrentTime(0);
+    stopSynthFallback();
     setIsPlaying(true);
+    setTimeout(() => {
+      if (audioRef.current) {
+        audioRef.current
+          .play()
+          .then(() => setIsPlaying(true))
+          .catch(() => {
+            startSynthFallback();
+            setIsPlaying(true);
+          });
+      }
+    }, 50);
   };
 
   const nextTrack = () => {
-    setCurrentTrackIndex((prev) => (prev + 1) % tracks.length);
-    setIsPlaying(true);
+    const nextIdx = (currentTrackIndex + 1) % tracks.length;
+    playTrack(nextIdx);
   };
 
   const prevTrack = () => {
-    setCurrentTrackIndex((prev) => (prev - 1 + tracks.length) % tracks.length);
-    setIsPlaying(true);
+    const prevIdx = (currentTrackIndex - 1 + tracks.length) % tracks.length;
+    playTrack(prevIdx);
   };
 
   const seek = (newTime) => {
-    const audio = audioRef.current;
-    audio.currentTime = newTime;
+    if (audioRef.current && !isNaN(audioRef.current.duration)) {
+      audioRef.current.currentTime = newTime;
+    }
     setCurrentTime(newTime);
   };
 
@@ -114,13 +139,15 @@ export const AudioProvider = ({ children }) => {
     const vol = parseFloat(newVolume);
     setVolume(vol);
     if (vol > 0 && isMuted) setIsMuted(false);
-    audioRef.current.volume = vol;
+    if (audioRef.current) audioRef.current.volume = vol;
   };
 
   const toggleMute = () => {
     setIsMuted((prev) => {
       const nextMuted = !prev;
-      audioRef.current.volume = nextMuted ? 0 : volume;
+      if (audioRef.current) {
+        audioRef.current.volume = nextMuted ? 0 : volume;
+      }
       return nextMuted;
     });
   };
@@ -139,30 +166,44 @@ export const AudioProvider = ({ children }) => {
     });
   }, [tracks, selectedCategory, searchQuery]);
 
-  const value = {
-    tracks,
-    filteredTracks,
-    currentTrack,
-    currentTrackIndex,
-    isPlaying,
-    currentTime,
-    duration,
-    volume,
-    isMuted,
-    searchQuery,
-    selectedCategory,
-    setSearchQuery,
-    setSelectedCategory,
-    togglePlay,
-    playTrack,
-    nextTrack,
-    prevTrack,
-    seek,
-    handleVolumeChange,
-    toggleMute,
-  };
-
-  return <AudioContext.Provider value={value}>{children}</AudioContext.Provider>;
+  return (
+    <AudioContext.Provider
+      value={{
+        tracks,
+        filteredTracks,
+        currentTrack,
+        currentTrackIndex,
+        isPlaying,
+        currentTime,
+        duration,
+        volume,
+        isMuted,
+        searchQuery,
+        selectedCategory,
+        setSearchQuery,
+        setSelectedCategory,
+        togglePlay,
+        playTrack,
+        nextTrack,
+        prevTrack,
+        seek,
+        handleVolumeChange,
+        toggleMute,
+      }}
+    >
+      <audio
+        ref={audioRef}
+        src={currentTrack?.src}
+        preload="auto"
+        onTimeUpdate={() => audioRef.current && setCurrentTime(audioRef.current.currentTime)}
+        onLoadedMetadata={() => audioRef.current && setDuration(audioRef.current.duration || 0)}
+        onEnded={nextTrack}
+        onPause={() => setIsPlaying(false)}
+        onPlay={() => setIsPlaying(true)}
+      />
+      {children}
+    </AudioContext.Provider>
+  );
 };
 
 export const useAudio = () => {
