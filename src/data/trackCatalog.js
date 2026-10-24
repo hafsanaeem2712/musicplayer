@@ -3,8 +3,8 @@ export const TRACK_CATEGORIES = ['All', 'Pop', 'Lo-Fi', 'Romantic', 'Chill'];
 export const TRACKS = [
   {
     id: 1,
-    title: 'Track One',
-    artist: 'Custom Artist 1',
+    title: 'barsaat',
+    artist: 'banjare',
     category: 'Pop',
     duration: '03:30',
     src: '/audio/song1.mp3',
@@ -12,8 +12,8 @@ export const TRACKS = [
   },
   {
     id: 2,
-    title: 'Track Two',
-    artist: 'Custom Artist 2',
+    title: 'Tu Humdum',
+    artist: 'vishal mishra',
     category: 'Romantic',
     duration: '04:00',
     src: '/audio/song2.mp3',
@@ -21,8 +21,8 @@ export const TRACKS = [
   },
   {
     id: 3,
-    title: 'Track Three',
-    artist: 'Custom Artist 3',
+    title: 'aarzu',
+    artist: 'asim azhar',
     category: 'Chill',
     duration: '03:15',
     src: '/audio/song3.mp3',
@@ -30,8 +30,8 @@ export const TRACKS = [
   },
   {
     id: 4,
-    title: 'Track Four',
-    artist: 'Custom Artist 4',
+    title: 'lag ja gale',
+    artist: 'lata mangheskar',
     category: 'Lo-Fi',
     duration: '02:50',
     src: '/audio/song4.mp3',
@@ -39,9 +39,9 @@ export const TRACKS = [
   },
   {
     id: 5,
-    title: 'Track Five',
-    artist: 'Custom Artist 5',
-    category: 'Pop',
+    title: 'Tum',
+    artist: 'murtaza Qizilbash',
+    category: 'Romantic',
     duration: '03:45',
     src: '/audio/song5.mp3',
     cover: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?auto=format&fit=crop&w=300&q=80',
